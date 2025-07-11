@@ -7,22 +7,23 @@ from functools import wraps
 # Redis client setup
 _redis = redis.Redis()
 
+def cache_with_count(expire: int = 10):
+    def decorator(method: Callable) -> Callable:
+        @wraps(method)
+        def wrapper(url: str):
+            cache_key = f"cache:{url}"
+            count_key = f"count:{url}"
+            _redis.incr(count_key)
+            cached = _redis.get(cache_key)
+            if cached:
+                return cached.decode('utf-8')
+            result = method(url)
+            _redis.setex(cache_key, expire, result)
+            return result
+        return wrapper
+    return decorator
+
+@cache_with_count(expire=10)
 def get_page(url: str) -> str:
-    """Fetch HTML content of a URL and cache the result for 10 seconds."""
-    cache_key = f"cache:{url}"
-    count_key = f"count:{url}"
-
-    # Increment the access count
-    _redis.incr(count_key)
-
-    # Check if cached version exists
-    cached = _redis.get(cache_key)
-    if cached:
-        return cached.decode('utf-8')
-
-    # If not cached, fetch and store with expiration
     response = requests.get(url)
-    html = response.text
-    _redis.setex(cache_key, 10, html)
-
-    return html
+    return response.text
